@@ -47,6 +47,13 @@ function uid() {
   return crypto.randomUUID().slice(0, 8);
 }
 
+// Extract agent info from task description (---agent-meta--- block)
+function extractAgentFromDescription(desc) {
+  if (!desc) return null;
+  const match = desc.match(/---agent-meta---\s*\{[^}]*"agent"\s*:\s*"([^"]+)"[^}]*\}/);
+  return match ? match[1] : null;
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -225,6 +232,29 @@ const server = http.createServer(async (req, res) => {
       stats.total = board.columns.reduce((sum, col) => sum + col.tasks.length, 0);
       stats.initiatives = (board.initiatives || []).length;
       return json(res, stats);
+    }
+
+    // GET /api/tasks/recent — last 3 completed tasks (for dashboard)
+    if (resource === "tasks" && url.pathname === "/api/tasks/recent" && req.method === "GET") {
+      const limit = parseInt(url.searchParams.get("limit")) || 3;
+      // Find "Done" or similar completed column
+      const doneCol = board.columns.find(c => 
+        c.title.toLowerCase().includes("done") || 
+        c.title.toLowerCase().includes("review") ||
+        c.title.toLowerCase() === "done"
+      );
+      if (doneCol) {
+        const tasks = doneCol.tasks.slice(-limit).reverse();
+        const result = tasks.map(task => ({
+          ...task,
+          columnId: doneCol.id,
+          columnTitle: doneCol.title,
+          // Extract agent from description if present
+          agent: extractAgentFromDescription(task.description),
+        }));
+        return json(res, result);
+      }
+      return json(res, []);
     }
 
     return notFound(res);
