@@ -728,7 +728,7 @@
             const hiddenCols = ['queue', 'agent wip', 'review', 'done'];
             const isToDoCol = !hiddenCols.includes(col.title.toLowerCase());
             const agentBadge = renderAgentBadge(meta);
-            const sendBtn = isToDoCol ? `<button class="agent-send-btn" onclick="showAgentDropdown(event, ${col.id}, ${task.id})">→ Agent</button>` : '';
+            const sendBtn = isToDoCol ? `<button class="agent-send-btn" onclick="showAgentDropdown(event, '${col.id}', '${task.id}')">→ Agent</button>` : '';
 
             return `
                 <div class="card" data-task-id="${task.id}" data-column-id="${col.id}">
@@ -801,10 +801,10 @@
             const dropdown = document.createElement('div');
             dropdown.className = 'agent-dropdown';
             dropdown.innerHTML = `
-                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, null)">Auto (Keyword-Routing)</button>
-                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, 'claude')">Claude Code</button>
-                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, 'gemini')">Gemini CLI</button>
-                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, 'openclaw')">OpenClaw</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', null)">Auto (Keyword-Routing)</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', 'claude')">Claude Code</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', 'gemini')">Gemini CLI</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', 'openclaw')">OpenClaw</button>
             `;
             btn.parentElement.appendChild(dropdown);
 
@@ -816,9 +816,9 @@
         function sendToAgent(colId, taskId, agentChoice) {
             document.querySelectorAll('.agent-dropdown').forEach(d => d.remove());
 
-            const col = board.columns.find(c => c.id === colId);
+            const col = board.columns.find(c => String(c.id) === String(colId));
             if (!col) return;
-            const task = col.tasks.find(t => t.id === taskId);
+            const task = col.tasks.find(t => String(t.id) === String(taskId));
             if (!task) return;
 
             // Ensure Queue column exists
@@ -843,7 +843,7 @@
             task.desc = setAgentMetaFE(task.desc, meta);
 
             // Move task from current column to Queue
-            col.tasks = col.tasks.filter(t => t.id !== taskId);
+            col.tasks = col.tasks.filter(t => String(t.id) !== String(taskId));
             queueCol.tasks.push(task);
 
             save();
