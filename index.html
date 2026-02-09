@@ -553,7 +553,13 @@
             color: inherit;
         }
         .agent-dropdown-item:hover { background: #f4f5f7; }
+        .agent-dropdown-item.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .agent-dropdown-item.disabled:hover { background: none; }
         body.dark-mode .agent-dropdown-item:hover { background: #404040; }
+        body.dark-mode .agent-dropdown-item.disabled:hover { background: none; }
         .agent-result-link {
             display: inline-block;
             margin-top: 4px;
@@ -792,11 +798,39 @@
             return `<div class="${cls}">${labels[meta.status] || meta.status}</div>`;
         }
 
-        function showAgentDropdown(event, colId, taskId) {
+        // Agent registry cache (loaded from Task-Runner API)
+        let agentRegistry = null;
+        const TASK_RUNNER_URL = 'http://127.0.0.1:3004';
+
+        async function loadAgentRegistry() {
+            if (agentRegistry) return agentRegistry;
+            try {
+                const resp = await fetch(TASK_RUNNER_URL + '/api/agents');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    agentRegistry = data.agents || [];
+                    return agentRegistry;
+                }
+            } catch (e) {
+                console.log('Could not load agents from Task-Runner:', e.message);
+            }
+            // Fallback: hardcoded basics
+            agentRegistry = [
+                { id: 'claude', name: 'Claude Sonnet', enabled: true },
+                { id: 'claude-opus', name: 'Claude Opus', enabled: true },
+                { id: 'gemini', name: 'Gemini CLI', enabled: true },
+                { id: 'openclaw', name: 'OpenClaw', enabled: true }
+            ];
+            return agentRegistry;
+        }
+
+        async function showAgentDropdown(event, colId, taskId) {
             event.stopPropagation();
             event.preventDefault();
             // Remove any existing dropdown
             document.querySelectorAll('.agent-dropdown').forEach(d => d.remove());
+
+            const agents = await loadAgentRegistry();
 
             const btn = event.target;
             const rect = btn.getBoundingClientRect();
@@ -806,14 +840,21 @@
             dropdown.style.left = rect.left + 'px';
             dropdown.style.top = (rect.bottom + 4) + 'px';
             dropdown.style.zIndex = '9999';
-            dropdown.innerHTML = [
-                ['Auto (Keyword-Routing)', 'null'],
-                ['Claude Code', "'claude'"],
-                ['Gemini CLI', "'gemini'"],
-                ['OpenClaw', "'openclaw'"]
-            ].map(([label, agent]) =>
-                `<button class="agent-dropdown-item" onmousedown="sendToAgent('${colId}', '${taskId}', ${agent})">${label}</button>`
-            ).join('');
+
+            // Auto option first
+            let html = `<button class="agent-dropdown-item" onmousedown="sendToAgent('${colId}', '${taskId}', null)">Auto (Keyword-Routing)</button>`;
+
+            // Then all agents from config
+            for (const agent of agents) {
+                if (agent.enabled) {
+                    html += `<button class="agent-dropdown-item" onmousedown="sendToAgent('${colId}', '${taskId}', '${agent.id}')">${esc(agent.name)}</button>`;
+                } else {
+                    const tooltip = agent.note ? ` title="${escAttr(agent.note)}"` : '';
+                    html += `<button class="agent-dropdown-item disabled"${tooltip} disabled>${esc(agent.name)}</button>`;
+                }
+            }
+
+            dropdown.innerHTML = html;
             document.body.appendChild(dropdown);
 
             // Close on click outside
@@ -1690,7 +1731,7 @@
         // ═══════════════════════════════════════════════
         // INIT
         // ═══════════════════════════════════════════════
-        loadBoard().then(() => { render(); initDragDrop(); });
+        loadBoard().then(() => { render(); initDragDrop(); loadAgentRegistry(); });
     </script>
 </body>
 </html>

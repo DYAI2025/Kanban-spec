@@ -1,2 +1,11 @@
 .vercel
 .env*.local
+node_modules/
+
+# Task Runner — keine Ticket-Inhalte committen
+workspaces/
+results/
+exports/
+*.log
+board-data.json
+kanban_data.json

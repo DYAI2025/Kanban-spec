@@ -1,0 +1,78 @@
+{
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude Sonnet",
+      "type": "cli",
+      "cmd": "claude",
+      "args": ["-p", "{prompt}", "--dangerously-skip-permissions", "--model", "claude-sonnet-4-5-20250929"],
+      "keywords": ["implement", "code", "test", "fix", "bug", "feature", "api", "build", "deploy", "implementiere", "programmiere", "erstelle", "baue", "behebe", "fehler"],
+      "ramMB": 450,
+      "enabled": true
+    },
+    {
+      "id": "claude-opus",
+      "name": "Claude Opus",
+      "type": "cli",
+      "cmd": "claude",
+      "args": ["-p", "{prompt}", "--dangerously-skip-permissions"],
+      "keywords": ["refactor", "migration", "architect", "complex", "rewrite", "security", "performance", "optimize", "debug", "umbauen", "migriere", "komplex", "sicherheit", "optimiere"],
+      "ramMB": 450,
+      "enabled": true
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "type": "cli",
+      "cmd": "gemini",
+      "args": ["-p", "{prompt}", "--yolo"],
+      "keywords": ["research", "analyse", "docs", "review", "spec", "plan", "compare", "recherche", "analysiere", "dokumentation"],
+      "ramMB": 200,
+      "default": true,
+      "enabled": true
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "type": "cli",
+      "cmd": "openclaw",
+      "args": ["agent", "--local", "--session-id", "task-{timestamp}", "-m", "{prompt}", "--json"],
+      "keywords": ["schreibe", "text", "kommunikation", "nachricht", "email", "kreativ", "marketing", "übersetze"],
+      "ramMB": 350,
+      "enabled": true
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "type": "cli",
+      "cmd": "codex",
+      "args": ["-p", "{prompt}", "--full-auto"],
+      "keywords": [],
+      "ramMB": 400,
+      "enabled": false,
+      "note": "OpenAI quota exceeded"
+    },
+    {
+      "id": "qwen",
+      "name": "Qwen Code",
+      "type": "cli",
+      "cmd": "/home/moltbot/.local/bin/qwen",
+      "args": ["-p", "{prompt}", "--yolo"],
+      "keywords": [],
+      "ramMB": 200,
+      "enabled": false,
+      "note": "DASHSCOPE_API_KEY needs setup"
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi K2.5",
+      "type": "cli",
+      "cmd": "/home/moltbot/.venv/bin/kimi",
+      "args": ["-p", "{prompt}", "--yolo"],
+      "keywords": [],
+      "ramMB": 300,
+      "enabled": false,
+      "note": "MOONSHOT_API_KEY needs setup"
+    }
+  ]
+}
