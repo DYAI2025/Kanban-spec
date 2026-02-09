@@ -486,6 +486,84 @@
         }
         .add-column-btn:hover { background: rgba(255,255,255,0.4); }
 
+        /* ── Agent Status Badges ──────────────────────── */
+        .agent-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 6px;
+        }
+        .agent-badge-queued { background: #deebff; color: #0747a6; }
+        .agent-badge-running { background: #fff0b3; color: #974f0c; }
+        .agent-badge-review { background: #e3fcef; color: #006644; }
+        .agent-badge-failed { background: #ffbdad; color: #bf2600; }
+        .agent-badge .agent-spinner {
+            display: inline-block;
+            width: 10px; height: 10px;
+            border: 2px solid #ddd;
+            border-top-color: #974f0c;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        body.dark-mode .agent-badge-queued { background: #1a3a5c; color: #8cb4e0; }
+        body.dark-mode .agent-badge-running { background: #5c4a1a; color: #e0c88c; }
+        body.dark-mode .agent-badge-review { background: #1a4a33; color: #8ce0b4; }
+        body.dark-mode .agent-badge-failed { background: #5c1a1a; color: #e08c8c; }
+
+        .agent-send-btn {
+            background: #6554c0;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            opacity: 0;
+            position: relative;
+        }
+        .card:hover .agent-send-btn { opacity: 1; }
+        .agent-send-btn:hover { background: #8777d9; }
+
+        .agent-dropdown {
+            position: absolute;
+            bottom: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #dfe1e6;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+            min-width: 140px;
+            padding: 4px 0;
+        }
+        body.dark-mode .agent-dropdown { background: #2d2d2d; border-color: #555; }
+        .agent-dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 6px 12px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 12px;
+            color: inherit;
+        }
+        .agent-dropdown-item:hover { background: #f4f5f7; }
+        body.dark-mode .agent-dropdown-item:hover { background: #404040; }
+        .agent-result-link {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #0052cc;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        body.dark-mode .agent-result-link { color: #64b5f6; }
+
         /* Column drag handle */
         .column-drag-handle {
             cursor: grab;
@@ -637,34 +715,139 @@
                         <span class="task-count">${col.tasks.length}</span>
                     </div>
                     <div class="cards" data-column-id="${col.id}">
-                        ${col.tasks.map(task => `
-                            <div class="card" data-task-id="${task.id}" data-column-id="${col.id}">
-                                <div class="card-title" contenteditable="true" onblur="saveTaskTitle(${col.id},${task.id})">${esc(task.title)}</div>
-                                <div class="card-desc" contenteditable="true" onblur="saveTaskDesc(${col.id},${task.id})">${esc(task.desc || '')}</div>
-                                <div class="card-footer">
-                                    <div style="display: flex; align-items: center;">
-                                        <span class="card-color-indicator" style="background-color: ${task.color || '#cccccc'};" title="${esc(task.colorLabel || 'Keine Farbe')}"></span>
-                                        <small style="color:#999">${task.created || task.createdAt ? new Date(task.created || task.createdAt).toLocaleDateString('de') : ''}</small>
-                                    </div>
-                                    <div class="card-actions">
-                                        <button class="attach-file-btn" onclick="attachFile(${col.id}, ${task.id})">📁</button>
-                                        <button class="delete-btn" onclick="deleteTask(${col.id},${task.id})">✕</button>
-                                    </div>
-                                </div>
-                                ${task.files && task.files.length > 0 ? `
-                                <div class="attached-files">
-                                    ${task.files.map(file => `
-                                        <span class="attached-file">
-                                            <a href="${escAttr(file.url)}" target="_blank">${esc(file.name)}</a>
-                                        </span>
-                                    `).join('')}
-                                </div>` : ''}
-                            </div>
-                        `).join('')}
+                        ${col.tasks.map(task => renderCard(col, task)).join('')}
                     </div>
                     <button class="add-task-btn" onclick="addTask(${col.id})">+ Task</button>
                 </div>
             `).join('') + `<button class="add-column-btn" onclick="addColumn()">+ Spalte</button>`;
+        }
+
+        function renderCard(col, task) {
+            const meta = parseAgentMetaFE(task.desc);
+            const cleanDesc = getCleanDescFE(task.desc);
+            const hiddenCols = ['queue', 'agent wip', 'review', 'done'];
+            const isToDoCol = !hiddenCols.includes(col.title.toLowerCase());
+            const agentBadge = renderAgentBadge(meta);
+            const sendBtn = isToDoCol ? `<button class="agent-send-btn" onclick="showAgentDropdown(event, ${col.id}, ${task.id})">→ Agent</button>` : '';
+
+            return `
+                <div class="card" data-task-id="${task.id}" data-column-id="${col.id}">
+                    <div class="card-title" contenteditable="true" onblur="saveTaskTitle(${col.id},${task.id})">${esc(task.title)}</div>
+                    <div class="card-desc" contenteditable="true" onblur="saveTaskDesc(${col.id},${task.id})">${esc(cleanDesc)}</div>
+                    ${agentBadge}
+                    <div class="card-footer">
+                        <div style="display: flex; align-items: center;">
+                            <span class="card-color-indicator" style="background-color: ${task.color || '#cccccc'};" title="${esc(task.colorLabel || 'Keine Farbe')}"></span>
+                            <small style="color:#999">${task.created || task.createdAt ? new Date(task.created || task.createdAt).toLocaleDateString('de') : ''}</small>
+                        </div>
+                        <div class="card-actions">
+                            ${sendBtn}
+                            <button class="attach-file-btn" onclick="attachFile(${col.id}, ${task.id})">📁</button>
+                            <button class="delete-btn" onclick="deleteTask(${col.id},${task.id})">✕</button>
+                        </div>
+                    </div>
+                    ${task.files && task.files.length > 0 ? `
+                    <div class="attached-files">
+                        ${task.files.map(file => `
+                            <span class="attached-file">
+                                <a href="${escAttr(file.url)}" target="_blank">${esc(file.name)}</a>
+                            </span>
+                        `).join('')}
+                    </div>` : ''}
+                </div>
+            `;
+        }
+
+        // ═══════════════════════════════════════════════
+        // AGENT META (Frontend helpers)
+        // ═══════════════════════════════════════════════
+        function parseAgentMetaFE(description) {
+            if (!description) return null;
+            const idx = description.indexOf('---agent-meta---');
+            if (idx === -1) return null;
+            try { return JSON.parse(description.slice(idx + '---agent-meta---'.length).trim()); }
+            catch { return null; }
+        }
+
+        function getCleanDescFE(description) {
+            if (!description) return '';
+            const idx = description.indexOf('---agent-meta---');
+            return idx === -1 ? description : description.slice(0, idx).trim();
+        }
+
+        function setAgentMetaFE(description, meta) {
+            const clean = getCleanDescFE(description);
+            return clean + '\n\n---agent-meta---\n' + JSON.stringify(meta);
+        }
+
+        function renderAgentBadge(meta) {
+            if (!meta || !meta.status) return '';
+            const labels = {
+                queued: 'In Warteschlange',
+                running: `<span class="agent-spinner"></span> ${esc(meta.agent || '?')} arbeitet...`,
+                review: 'Ergebnis prüfen',
+                failed: `Fehlgeschlagen (${meta.attempts || '?'}/${3})`
+            };
+            const cls = `agent-badge agent-badge-${meta.status}`;
+            return `<div class="${cls}">${labels[meta.status] || meta.status}</div>`;
+        }
+
+        function showAgentDropdown(event, colId, taskId) {
+            event.stopPropagation();
+            // Remove any existing dropdown
+            document.querySelectorAll('.agent-dropdown').forEach(d => d.remove());
+
+            const btn = event.target;
+            const dropdown = document.createElement('div');
+            dropdown.className = 'agent-dropdown';
+            dropdown.innerHTML = `
+                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, null)">Auto (Keyword-Routing)</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, 'claude')">Claude Code</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, 'gemini')">Gemini CLI</button>
+                <button class="agent-dropdown-item" onclick="sendToAgent(${colId}, ${taskId}, 'openclaw')">OpenClaw</button>
+            `;
+            btn.parentElement.appendChild(dropdown);
+
+            // Close on click outside
+            const close = (e) => { if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', close); } };
+            setTimeout(() => document.addEventListener('click', close), 10);
+        }
+
+        function sendToAgent(colId, taskId, agentChoice) {
+            document.querySelectorAll('.agent-dropdown').forEach(d => d.remove());
+
+            const col = board.columns.find(c => c.id === colId);
+            if (!col) return;
+            const task = col.tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            // Ensure Queue column exists
+            let queueCol = board.columns.find(c => c.title === 'Queue');
+            if (!queueCol) {
+                queueCol = { id: Date.now(), title: 'Queue', tasks: [] };
+                // Insert before Done or at end
+                const doneIdx = board.columns.findIndex(c => c.title.toLowerCase() === 'done');
+                if (doneIdx >= 0) board.columns.splice(doneIdx, 0, queueCol);
+                else board.columns.push(queueCol);
+            }
+
+            // Set agent meta
+            const meta = {
+                agent: agentChoice, // null = auto-routing
+                status: 'queued',
+                attempts: 0,
+                startedAt: null,
+                resultPath: null,
+                lastError: null
+            };
+            task.desc = setAgentMetaFE(task.desc, meta);
+
+            // Move task from current column to Queue
+            col.tasks = col.tasks.filter(t => t.id !== taskId);
+            queueCol.tasks.push(task);
+
+            save();
+            render();
         }
 
         // ═══════════════════════════════════════════════
