@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Board - Nexus</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f4f5f7;
+            min-height: 100vh;
+            padding: 20px;
+            transition: background-color 0.3s ease;
+        }
+        body.dark-mode {
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        body.dark-mode .column {
+            background: #2d2d2d;
+            color: #e0e0e0;
+        }
+        body.dark-mode .card {
+            background: #333333;
+            color: #e0e0e0;
+            box-shadow: 0 1px 2px rgba(255,255,255,0.1);
+        }
+        body.dark-mode .card:hover { box-shadow: 0 2px 8px rgba(255,255,255,0.15); }
+        body.dark-mode .add-task-btn,
+        body.dark-mode .column-title,
+        body.dark-mode .task-count { color: #b0b0b0; }
+        body.dark-mode .add-task-btn:hover,
+        body.dark-mode .column-title:hover { background: #404040; }
+        body.dark-mode h1 { color: #e0e0e0; }
+        body.dark-mode .backlog-container { background: #2d2d2d; }
+        body.dark-mode .backlog-card { background: #3a3a3a; color: #e0e0e0; }
+        body.dark-mode .backlog-card .bl-title { color: #e0e0e0; }
+        body.dark-mode .backlog-card .bl-desc { color: #b0b0b0; }
+        body.dark-mode .backlog-card .bl-link { color: #64b5f6; }
+        body.dark-mode .bl-doc { background: #404040; }
+        body.dark-mode .bl-doc a { color: #64b5f6; }
+        body.dark-mode .spec-preview { background: #333; border-color: #555; }
+        body.dark-mode .spec-task-item { background: #404040; }
+        body.dark-mode input, body.dark-mode textarea { background: #333333; color: #e0e0e0; border: 1px solid #555; }
+        body.dark-mode .modal-overlay .modal { background: #2d2d2d; color: #e0e0e0; border: 1px solid #555; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        h1 { color: #172b4d; }
+
+        /* ── Backlog ────────────────────────────────────── */
+        .backlog-container {
+            margin-bottom: 24px;
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .backlog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .backlog-header h2 { font-size: 16px; color: #172b4d; }
+        .backlog-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 12px;
+        }
+        .backlog-card {
+            background: #f0f5ff;
+            border-left: 4px solid #0052cc;
+            padding: 14px;
+            border-radius: 4px;
+            position: relative;
+        }
+        .backlog-card .bl-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: #172b4d;
+            margin-bottom: 4px;
+        }
+        .backlog-card .bl-desc {
+            color: #5e6c84;
+            font-size: 13px;
+            margin-bottom: 8px;
+            white-space: pre-line;
+        }
+        .backlog-card .bl-link {
+            color: #0052cc;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .bl-docs { margin: 6px 0; }
+        .bl-doc {
+            display: inline-block;
+            background: #e4e8ef;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-right: 5px;
+            margin-bottom: 3px;
+            font-size: 12px;
+        }
+        .bl-doc a { color: #0052cc; text-decoration: none; }
+        .bl-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .bl-btn {
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .bl-btn-primary { background: #0052cc; color: white; }
+        .bl-btn-primary:hover { background: #0065ff; }
+        .bl-btn-success { background: #00875a; color: white; }
+        .bl-btn-success:hover { background: #00a36c; }
+        .bl-btn-danger { background: #de350b; color: white; }
+        .bl-btn-danger:hover { background: #ff4422; }
+        .bl-btn-secondary { background: #dfe1e6; color: #172b4d; }
+        .bl-btn-secondary:hover { background: #c1c7d0; }
+        .bl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .bl-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .bl-status-none { background: #dfe1e6; color: #5e6c84; }
+        .bl-status-generating { background: #fff0b3; color: #974f0c; }
+        .bl-status-ready { background: #e3fcef; color: #006644; }
+        .bl-status-approved { background: #deebff; color: #0747a6; }
+
+        .bl-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #ddd;
+            border-top-color: #0052cc;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 4px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Spec Preview */
+        .spec-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fafbfc;
+            border: 1px solid #dfe1e6;
+            border-radius: 4px;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .spec-preview pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: inherit;
+            margin: 0;
+        }
+        .spec-tasks-list { margin-top: 8px; }
+        .spec-task-item {
+            background: #e8ecf0;
+            padding: 8px 10px;
+            border-radius: 4px;
+            margin-bottom: 4px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .spec-task-item.released {
+            opacity: 0.45;
+            text-decoration: line-through;
+        }
+        .spec-task-item strong { font-weight: 600; }
+        .spec-task-content { flex: 1; min-width: 0; }
+        .spec-task-release-btn {
+            flex-shrink: 0;
+            background: #00875a;
+            color: white;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .spec-task-release-btn:hover { background: #00a36c; }
+        .spec-task-released-badge {
+            flex-shrink: 0;
+            background: #deebff;
+            color: #0747a6;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        body.dark-mode .spec-task-item { background: #404040; }
+        body.dark-mode .spec-task-item.released { opacity: 0.35; }
+        body.dark-mode .spec-task-released-badge { background: #1a3a5c; color: #8cb4e0; }
+
+        .spec-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 0;
+            color: #172b4d;
+        }
+        .spec-toggle:hover { color: #0052cc; }
+        .spec-toggle-arrow {
+            display: inline-block;
+            transition: transform 0.2s;
+            font-size: 10px;
+        }
+        .spec-toggle-arrow.open { transform: rotate(90deg); }
+        .spec-collapsible {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .spec-collapsible.open {
+            max-height: 5000px;
+        }
+        body.dark-mode .spec-toggle { color: #e0e0e0; }
+        body.dark-mode .spec-toggle:hover { color: #64b5f6; }
+
+        .bl-delete-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0.3;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .backlog-card:hover .bl-delete-btn { opacity: 1; }
+        .bl-delete-btn:hover { background: #ffbdad; }
+
+        .backlog-empty {
+            color: #5e6c84;
+            font-size: 14px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* ── Modal ──────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-overlay .modal {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            min-width: 400px;
+            max-width: 520px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        }
+        .modal h3 { margin-bottom: 16px; }
+        .modal label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #5e6c84; }
+        .modal input, .modal textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #dfe1e6;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .modal textarea { min-height: 60px; resize: vertical; }
+        .modal-doc-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .modal-doc-row input { margin-bottom: 0; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 16px; }
+        .modal-buttons button { flex: 1; }
+
+        /* ── Board ──────────────────────────────────────── */
+        .board {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+        }
+        .column {
+            background: #ebecf0;
+            border-radius: 8px;
+            min-width: 300px;
+            max-width: 300px;
+            padding: 12px;
+        }
+        .column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .column-title {
+            font-weight: 600;
+            color: #172b4d;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .column-title:hover { background: #dfe1e6; }
+        .task-count {
+            color: #5e6c84;
+            font-size: 12px;
+        }
+        .add-task-btn {
+            width: 100%;
+            padding: 8px;
+            border: none;
+            background: transparent;
+            color: #5e6c84;
+            cursor: pointer;
+            border-radius: 4px;
+            text-align: left;
+        }
+        .add-task-btn:hover { background: #dfe1e6; }
+        .cards {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 50px;
+        }
+        .card {
+            background: white;
+            border-radius: 4px;
+            padding: 10px 12px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            cursor: grab;
+            transition: box-shadow 0.2s, transform 0.15s;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .card.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+            cursor: grabbing;
+        }
+        .card-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.85;
+            transform: rotate(2deg);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+            background: white;
+            border-radius: 4px;
+            padding: 10px 12px;
+        }
+        .drop-indicator {
+            height: 3px;
+            background: #0052cc;
+            border-radius: 2px;
+            margin: 2px 0;
+            transition: opacity 0.15s;
+        }
+        .cards.drop-target {
+            background: rgba(0,82,204,0.08);
+            border-radius: 4px;
+            min-height: 60px;
+        }
+        .card-title {
+            margin-bottom: 8px;
+            outline: none;
+            word-break: break-word;
+        }
+        .card-title:focus { background: #fff3cd; }
+        .card-desc {
+            color: #5e6c84;
+            font-size: 13px;
+            outline: none;
+            word-break: break-word;
+        }
+        .card-desc:focus { background: #f8f9fa; }
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .card-color-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .card-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .attach-file-btn, .delete-btn {
+            opacity: 0;
+            background: #de350b;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .card:hover .attach-file-btn, .card:hover .delete-btn { opacity: 1; }
+        .attached-files {
+            margin-top: 8px;
+            font-size: 12px;
+        }
+        .attached-file {
+            display: inline-block;
+            background: #f4f5f7;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-right: 5px;
+            margin-bottom: 3px;
+        }
+        .attached-file a {
+            color: #0052cc;
+            text-decoration: none;
+        }
+        .add-column-btn {
+            min-width: 300px;
+            padding: 12px;
+            background: rgba(255,255,255,0.2);
+            border: 2px dashed #dfe1e6;
+            border-radius: 8px;
+            color: #5e6c84;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .add-column-btn:hover { background: rgba(255,255,255,0.4); }
+
+        /* Column drag handle */
+        .column-drag-handle {
+            cursor: grab;
+            padding: 2px 4px;
+            border-radius: 3px;
+            color: #b0b0b0;
+            font-size: 16px;
+            line-height: 1;
+            user-select: none;
+        }
+        .column-drag-handle:hover { background: #dfe1e6; color: #5e6c84; }
+        body.dark-mode .column-drag-handle:hover { background: #404040; color: #ccc; }
+        .column.col-dragging { opacity: 0.4; }
+        .column-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.85;
+            transform: rotate(1deg);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            border-radius: 8px;
+        }
+        .col-drop-indicator {
+            width: 4px;
+            background: #0052cc;
+            border-radius: 2px;
+            min-height: 80px;
+            align-self: stretch;
+        }
+
+        /* Edit Mode */
+        .column-header.editing .column-title { display: none; }
+        .column-header input {
+            display: none;
+            padding: 4px 8px;
+            border: 2px solid #0052cc;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            background: white;
+        }
+        .column-header.editing input { display: block; }
+
+        .add-btn {
+            background: #0052cc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .add-btn:hover { background: #0065ff; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📋 Kanban Board</h1>
+        <div style="display: flex; gap: 10px;">
+            <button class="add-btn" onclick="openAddProjectModal()">+ Projekt</button>
+            <button class="add-btn" onclick="addColumn()">+ Spalte</button>
+            <button class="add-btn" onclick="toggleDarkMode()" style="background: #666;">🌙 Dark</button>
+        </div>
+    </header>
+
+    <div id="backlog-container"></div>
+
+    <div class="board" id="board"></div>
+
+    <script>
+        // ═══════════════════════════════════════════════
+        // CONFIG
+        // ═══════════════════════════════════════════════
+        const SPEC_SERVER = 'http://127.0.0.1:3002';
+
+        // Project colors for approved tasks
+        const PROJECT_COLORS = [
+            '#4ecdc4', '#45b7d1', '#96ceb4', '#ff9ff3',
+            '#54a0ff', '#feca57', '#ff6b6b', '#a29bfe'
+        ];
+
+        // ═══════════════════════════════════════════════
+        // STATE
+        // ═══════════════════════════════════════════════
+        let board = {
+            columns: [
+                { id: 1, title: 'To Do', tasks: [] },
+                { id: 2, title: 'In Progress', tasks: [] },
+                { id: 3, title: 'Done', tasks: [] }
+            ],
+            initiatives: [],
+            backlog: []
+        };
+
+        // Polling timer for spec generation status
+        let specPollTimers = {};
+
+        // Track which project specs are expanded
+        let specExpanded = {};
+
+        // ═══════════════════════════════════════════════
+        // PERSISTENCE
+        // ═══════════════════════════════════════════════
+        function save() {
+            localStorage.setItem('kanban-board', JSON.stringify(board));
+            fetch('/api/board', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(board)
+            }).catch(err => console.log('Server save failed:', err.message));
+        }
+
+        async function loadBoard() {
+            try {
+                const response = await fetch('/api/board');
+                if (response.ok) {
+                    const serverBoard = await response.json();
+                    board = serverBoard;
+                    if (!board.backlog) board.backlog = [];
+                    if (!board.initiatives) board.initiatives = [];
+                    localStorage.setItem('kanban-board', JSON.stringify(board));
+                } else {
+                    const local = localStorage.getItem('kanban-board');
+                    if (local) board = JSON.parse(local);
+                }
+            } catch (e) {
+                const local = localStorage.getItem('kanban-board');
+                if (local) board = JSON.parse(local);
+            }
+            if (!board.backlog) board.backlog = [];
+        }
+
+        // ═══════════════════════════════════════════════
+        // RENDER
+        // ═══════════════════════════════════════════════
+        function render() {
+            renderBacklog();
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = board.columns.map(col => `
+                <div class="column" data-id="${col.id}">
+                    <div class="column-header">
+                        <span class="column-drag-handle" title="Spalte verschieben">⠿</span>
+                        <span class="column-title" ondblclick="editColumnTitle(${col.id})">${col.title}</span>
+                        <input type="text" value="${escAttr(col.title)}" onblur="saveColumnTitle(${col.id})" onkeypress="if(event.key==='Enter')saveColumnTitle(${col.id})">
+                        <span class="task-count">${col.tasks.length}</span>
+                    </div>
+                    <div class="cards" data-column-id="${col.id}">
+                        ${col.tasks.map(task => `
+                            <div class="card" data-task-id="${task.id}" data-column-id="${col.id}">
+                                <div class="card-title" contenteditable="true" onblur="saveTaskTitle(${col.id},${task.id})">${esc(task.title)}</div>
+                                <div class="card-desc" contenteditable="true" onblur="saveTaskDesc(${col.id},${task.id})">${esc(task.desc || '')}</div>
+                                <div class="card-footer">
+                                    <div style="display: flex; align-items: center;">
+                                        <span class="card-color-indicator" style="background-color: ${task.color || '#cccccc'};" title="${esc(task.colorLabel || 'Keine Farbe')}"></span>
+                                        <small style="color:#999">${task.created || task.createdAt ? new Date(task.created || task.createdAt).toLocaleDateString('de') : ''}</small>
+                                    </div>
+                                    <div class="card-actions">
+                                        <button class="attach-file-btn" onclick="attachFile(${col.id}, ${task.id})">📁</button>
+                                        <button class="delete-btn" onclick="deleteTask(${col.id},${task.id})">✕</button>
+                                    </div>
+                                </div>
+                                ${task.files && task.files.length > 0 ? `
+                                <div class="attached-files">
+                                    ${task.files.map(file => `
+                                        <span class="attached-file">
+                                            <a href="${escAttr(file.url)}" target="_blank">${esc(file.name)}</a>
+                                        </span>
+                                    `).join('')}
+                                </div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="add-task-btn" onclick="addTask(${col.id})">+ Task</button>
+                </div>
+            `).join('') + `<button class="add-column-btn" onclick="addColumn()">+ Spalte</button>`;
+        }
+
+        // ═══════════════════════════════════════════════
+        // BACKLOG RENDER
+        // ═══════════════════════════════════════════════
+        function renderBacklog() {
+            const container = document.getElementById('backlog-container');
+            const activeProjects = board.backlog.filter(p => p.specStatus !== 'approved');
+
+            container.innerHTML = `
+                <div class="backlog-container">
+                    <div class="backlog-header">
+                        <h2>📦 Backlog</h2>
+                        <button class="add-btn" onclick="openAddProjectModal()" style="font-size:12px;padding:6px 12px;">+ Projekt</button>
+                    </div>
+                    ${activeProjects.length === 0
+                        ? '<div class="backlog-empty">Keine Projekte im Backlog. Klicke "+ Projekt" um eins hinzuzufügen.</div>'
+                        : `<div class="backlog-grid">${activeProjects.map(p => renderBacklogCard(p)).join('')}</div>`
+                    }
+                </div>
+            `;
+
+            // Start polling for any generating projects
+            activeProjects.filter(p => p.specStatus === 'generating').forEach(p => {
+                startSpecPoll(p.id);
+            });
+        }
+
+        function renderBacklogCard(p) {
+            const statusLabel = {
+                'none': 'Spec ausstehend',
+                'generating': '<span class="bl-spinner"></span> Spec wird generiert…',
+                'ready': 'Spec bereit',
+                'approved': 'Freigegeben'
+            };
+            const statusClass = `bl-status-${p.specStatus}`;
+
+            let specSection = '';
+            if (p.specStatus === 'ready' && p.spec) {
+                const specShort = p.spec.length > 300 ? p.spec.slice(0, 300) + '…' : p.spec;
+                const releasedCount = (p.specTasks || []).filter(t => t.released).length;
+                const totalTasks = (p.specTasks || []).length;
+                const isOpen = specExpanded[p.id] ? 'open' : '';
+                specSection = `
+                    <div class="spec-toggle" onclick="toggleSpec('${p.id}')">
+                        <span class="spec-toggle-arrow ${isOpen}">▶</span>
+                        Spec & Tasks (${releasedCount}/${totalTasks} freigegeben)
+                    </div>
+                    <div class="spec-collapsible ${isOpen}">
+                        <div class="spec-preview">
+                            <pre>${esc(specShort)}</pre>
+                        </div>
+                        ${totalTasks > 0 ? `
+                            <div class="spec-tasks-list">
+                                ${p.specTasks.map((t, idx) => `
+                                    <div class="spec-task-item${t.released ? ' released' : ''}">
+                                        <div class="spec-task-content">
+                                            <strong>${esc(t.title)}</strong><br>
+                                            <span style="color:#5e6c84">${esc(t.details || '')}</span>
+                                        </div>
+                                        ${t.released
+                                            ? '<span class="spec-task-released-badge">auf Board ✓</span>'
+                                            : `<button class="spec-task-release-btn" onclick="releaseTask('${p.id}', ${idx})">→ Board</button>`
+                                        }
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="backlog-card" data-project-id="${p.id}">
+                    <button class="bl-delete-btn" onclick="deleteProject('${p.id}')" title="Löschen">✕</button>
+                    <span class="bl-status-badge ${statusClass}">${statusLabel[p.specStatus] || p.specStatus}</span>
+                    <div class="bl-title">${esc(p.title)}</div>
+                    <div class="bl-desc">${esc(p.description)}</div>
+                    ${p.githubLink ? `<a href="${escAttr(p.githubLink)}" target="_blank" class="bl-link">GitHub →</a>` : ''}
+                    ${p.documents && p.documents.length > 0 ? `
+                        <div class="bl-docs">
+                            ${p.documents.map(d => `<span class="bl-doc"><a href="${escAttr(d.url)}" target="_blank">${esc(d.name)}</a></span>`).join('')}
+                        </div>
+                    ` : ''}
+                    ${specSection}
+                    <div class="bl-actions">
+                        ${p.specStatus === 'none' ? `<button class="bl-btn bl-btn-primary" onclick="generateSpec('${p.id}')">Spec erstellen</button>` : ''}
+                        ${p.specStatus === 'generating' ? `<button class="bl-btn bl-btn-secondary" disabled>Generierung läuft…</button>` : ''}
+                        ${p.specStatus === 'ready' ? `
+                            <button class="bl-btn bl-btn-success" onclick="approveProject('${p.id}')">Alle → Board</button>
+                            <button class="bl-btn bl-btn-secondary" onclick="generateSpec('${p.id}')">Neu generieren</button>
+                        ` : ''}
+                        <button class="bl-btn bl-btn-secondary" onclick="editProject('${p.id}')">Bearbeiten</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // ═══════════════════════════════════════════════
+        // BACKLOG ACTIONS
+        // ═══════════════════════════════════════════════
+        function toggleSpec(projectId) {
+            specExpanded[projectId] = !specExpanded[projectId];
+            renderBacklog();
+        }
+
+        function openAddProjectModal() {
+            showModal({
+                title: 'Neues Projekt',
+                fields: [
+                    { id: 'title', label: 'Titel', type: 'input', required: true },
+                    { id: 'description', label: 'Beschreibung', type: 'textarea' },
+                    { id: 'githubLink', label: 'GitHub-Link', type: 'input', placeholder: 'https://github.com/...' },
+                ],
+                hasDocs: true,
+                onSubmit: (data) => {
+                    board.backlog.push({
+                        id: 'proj-' + uid(),
+                        title: data.title,
+                        description: data.description || '',
+                        githubLink: data.githubLink || '',
+                        documents: data.documents || [],
+                        specStatus: 'none',
+                        spec: '',
+                        specTasks: [],
+                        createdAt: new Date().toISOString()
+                    });
+                    save();
+                    render();
+                }
+            });
+        }
+
+        function editProject(projectId) {
+            const p = board.backlog.find(x => x.id === projectId);
+            if (!p) return;
+            showModal({
+                title: 'Projekt bearbeiten',
+                fields: [
+                    { id: 'title', label: 'Titel', type: 'input', value: p.title, required: true },
+                    { id: 'description', label: 'Beschreibung', type: 'textarea', value: p.description },
+                    { id: 'githubLink', label: 'GitHub-Link', type: 'input', value: p.githubLink },
+                ],
+                hasDocs: true,
+                existingDocs: p.documents || [],
+                onSubmit: (data) => {
+                    p.title = data.title;
+                    p.description = data.description || '';
+                    p.githubLink = data.githubLink || '';
+                    p.documents = data.documents || [];
+                    save();
+                    render();
+                }
+            });
+        }
+
+        function deleteProject(projectId) {
+            if (!confirm('Projekt aus dem Backlog löschen?')) return;
+            board.backlog = board.backlog.filter(p => p.id !== projectId);
+            save();
+            render();
+        }
+
+        async function generateSpec(projectId) {
+            const p = board.backlog.find(x => x.id === projectId);
+            if (!p) return;
+
+            try {
+                // Set status on server FIRST via dedicated backlog endpoint
+                const resp = await fetch('/api/backlog/' + projectId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ specStatus: 'generating' })
+                });
+                if (!resp.ok) throw new Error('API Fehler: ' + resp.status);
+
+                // Then update local state and render
+                p.specStatus = 'generating';
+                render();
+
+                // Spec-Server on VPS polls for 'generating' projects and processes them
+                startSpecPoll(projectId);
+            } catch (err) {
+                alert('Fehler beim Starten der Spec-Generierung: ' + err.message);
+                p.specStatus = 'none';
+                render();
+            }
+        }
+
+        function startSpecPoll(projectId) {
+            if (specPollTimers[projectId]) return;
+            specPollTimers[projectId] = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/backlog/' + projectId);
+                    if (!resp.ok) return;
+                    const remote = await resp.json();
+                    const local = board.backlog.find(x => x.id === projectId);
+                    if (!local) { clearInterval(specPollTimers[projectId]); delete specPollTimers[projectId]; return; }
+                    if (remote.specStatus !== 'generating') {
+                        // Update local state
+                        local.specStatus = remote.specStatus;
+                        local.spec = remote.spec || '';
+                        local.specTasks = remote.specTasks || [];
+                        save();
+                        render();
+                        clearInterval(specPollTimers[projectId]);
+                        delete specPollTimers[projectId];
+                    }
+                } catch (e) { /* continue polling */ }
+            }, 5000);
+        }
+
+        function getProjectColor(projectId) {
+            const idx = board.backlog.findIndex(x => x.id === projectId);
+            return PROJECT_COLORS[idx % PROJECT_COLORS.length];
+        }
+
+        function ensureTodoColumn() {
+            let todoCol = board.columns.find(c => c.title === 'To Do');
+            if (!todoCol) {
+                todoCol = { id: Date.now(), title: 'To Do', tasks: [] };
+                board.columns.unshift(todoCol);
+            }
+            return todoCol;
+        }
+
+        function releaseTask(projectId, taskIndex) {
+            const p = board.backlog.find(x => x.id === projectId);
+            if (!p || !p.specTasks || !p.specTasks[taskIndex]) return;
+            const t = p.specTasks[taskIndex];
+            if (t.released) return;
+
+            const todoCol = ensureTodoColumn();
+            const color = getProjectColor(projectId);
+
+            const titleText = `${p.title} — ${t.title}`;
+            todoCol.tasks.push({
+                id: Date.now(),
+                title: titleText.length > 100 ? titleText.slice(0, 100) + '…' : titleText,
+                desc: t.details || '',
+                created: Date.now(),
+                color: color,
+                colorLabel: p.title,
+                files: []
+            });
+
+            t.released = true;
+
+            // If all tasks released, mark project as approved
+            if (p.specTasks.every(st => st.released)) {
+                p.specStatus = 'approved';
+            }
+
+            save();
+            // Also update server-side backlog
+            fetch('/api/backlog/' + projectId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ specTasks: p.specTasks, specStatus: p.specStatus })
+            }).catch(() => {});
+            render();
+        }
+
+        function approveProject(projectId) {
+            const p = board.backlog.find(x => x.id === projectId);
+            if (!p || p.specStatus !== 'ready') return;
+
+            const todoCol = ensureTodoColumn();
+            const color = getProjectColor(projectId);
+
+            // Release all unreleased tasks
+            (p.specTasks || []).forEach((t, i) => {
+                if (t.released) return;
+                const titleText = `${p.title} — ${t.title}`;
+                todoCol.tasks.push({
+                    id: Date.now() + i + 1,
+                    title: titleText.length > 100 ? titleText.slice(0, 100) + '…' : titleText,
+                    desc: t.details || '',
+                    created: Date.now(),
+                    color: color,
+                    colorLabel: p.title,
+                    files: []
+                });
+                t.released = true;
+            });
+
+            // Mark as approved
+            p.specStatus = 'approved';
+            save();
+            fetch('/api/backlog/' + projectId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ specTasks: p.specTasks, specStatus: p.specStatus })
+            }).catch(() => {});
+            render();
+        }
+
+        // ═══════════════════════════════════════════════
+        // MODAL
+        // ═══════════════════════════════════════════════
+        function showModal({ title, fields, hasDocs, existingDocs, onSubmit }) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+
+            let docsHTML = '';
+            if (hasDocs) {
+                const initDocs = existingDocs || [];
+                docsHTML = `
+                    <label>Dokumente</label>
+                    <div id="modal-docs">
+                        ${initDocs.map((d, i) => `
+                            <div class="modal-doc-row" data-idx="${i}">
+                                <input type="text" placeholder="Name" value="${escAttr(d.name)}" style="flex:1" class="doc-name">
+                                <input type="url" placeholder="URL" value="${escAttr(d.url)}" style="flex:2" class="doc-url">
+                                <button class="bl-btn bl-btn-danger" onclick="this.parentElement.remove()" style="padding:6px 8px;">✕</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button type="button" class="bl-btn bl-btn-secondary" onclick="addDocRow()" style="margin-bottom:12px;">+ Dokument</button>
+                `;
+            }
+
+            overlay.innerHTML = `
+                <div class="modal">
+                    <h3>${title}</h3>
+                    ${fields.map(f => `
+                        <label>${f.label}${f.required ? ' *' : ''}</label>
+                        ${f.type === 'textarea'
+                            ? `<textarea id="modal-${f.id}" placeholder="${f.placeholder || ''}">${esc(f.value || '')}</textarea>`
+                            : `<input type="text" id="modal-${f.id}" value="${escAttr(f.value || '')}" placeholder="${f.placeholder || ''}">`
+                        }
+                    `).join('')}
+                    ${docsHTML}
+                    <div class="modal-buttons">
+                        <button class="bl-btn bl-btn-primary" id="modal-submit">Speichern</button>
+                        <button class="bl-btn bl-btn-secondary" id="modal-cancel">Abbrechen</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+            overlay.querySelector('#modal-cancel').onclick = () => overlay.remove();
+            overlay.querySelector('#modal-submit').onclick = () => {
+                const data = {};
+                for (const f of fields) {
+                    data[f.id] = document.getElementById('modal-' + f.id).value.trim();
+                }
+                if (fields.some(f => f.required && !data[f.id])) {
+                    alert('Bitte Pflichtfelder ausfüllen.');
+                    return;
+                }
+                if (hasDocs) {
+                    data.documents = [];
+                    overlay.querySelectorAll('.modal-doc-row').forEach(row => {
+                        const name = row.querySelector('.doc-name').value.trim();
+                        const url = row.querySelector('.doc-url').value.trim();
+                        if (name && url) data.documents.push({ name, url });
+                    });
+                }
+                onSubmit(data);
+                overlay.remove();
+            };
+            // Focus first field
+            const firstInput = overlay.querySelector('input, textarea');
+            if (firstInput) firstInput.focus();
+        }
+
+        // Called from modal
+        window.addDocRow = function() {
+            const container = document.getElementById('modal-docs');
+            if (!container) return;
+            const row = document.createElement('div');
+            row.className = 'modal-doc-row';
+            row.innerHTML = `
+                <input type="text" placeholder="Name" style="flex:1" class="doc-name">
+                <input type="url" placeholder="URL" style="flex:2" class="doc-url">
+                <button class="bl-btn bl-btn-danger" onclick="this.parentElement.remove()" style="padding:6px 8px;">✕</button>
+            `;
+            container.appendChild(row);
+        };
+
+        // ═══════════════════════════════════════════════
+        // BOARD ACTIONS
+        // ═══════════════════════════════════════════════
+        function addColumn() {
+            const title = prompt('Spaltenname:');
+            if (title) {
+                board.columns.push({ id: Date.now(), title: title, tasks: [] });
+                save();
+                render();
+            }
+        }
+
+        function editColumnTitle(id) {
+            const col = document.querySelector(`.column[data-id="${id}"]`);
+            col.querySelector('.column-header').classList.add('editing');
+            col.querySelector('input').focus();
+        }
+
+        function saveColumnTitle(id) {
+            const col = document.querySelector(`.column[data-id="${id}"]`);
+            const input = col.querySelector('input');
+            const column = board.columns.find(c => c.id === id);
+            column.title = input.value;
+            col.querySelector('.column-header').classList.remove('editing');
+            save();
+            render();
+        }
+
+        function addTask(colId) {
+            const title = prompt('Task Titel:');
+            if (title) {
+                const column = board.columns.find(c => c.id === colId);
+                column.tasks.push({
+                    id: Date.now(),
+                    title: title,
+                    desc: '',
+                    created: Date.now(),
+                    color: '#cccccc',
+                    colorLabel: 'Standard',
+                    files: []
+                });
+                save();
+                render();
+            }
+        }
+
+        function saveTaskTitle(colId, taskId) {
+            const column = board.columns.find(c => c.id === colId);
+            const task = column.tasks.find(t => t.id === taskId);
+            task.title = event.target.innerText;
+            save();
+        }
+
+        function saveTaskDesc(colId, taskId) {
+            const column = board.columns.find(c => c.id === colId);
+            const task = column.tasks.find(t => t.id === taskId);
+            task.desc = event.target.innerText;
+            save();
+        }
+
+        function deleteTask(colId, taskId) {
+            if (confirm('Task löschen?')) {
+                const column = board.columns.find(c => c.id === colId);
+                column.tasks = column.tasks.filter(t => t.id !== taskId);
+                save();
+                render();
+            }
+        }
+
+        function attachFile(colId, taskId) {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:white;padding:20px;border:1px solid #ccc;border-radius:8px;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,0.25);display:flex;flex-direction:column;gap:10px;min-width:320px;';
+            if (document.body.classList.contains('dark-mode')) {
+                modal.style.background = '#2d2d2d';
+                modal.style.border = '1px solid #555';
+                modal.style.color = '#e0e0e0';
+            }
+
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.placeholder = 'Dateiname / Bezeichnung';
+            nameInput.style.cssText = 'padding:8px;border:1px solid #ccc;border-radius:4px;';
+
+            const urlInput = document.createElement('input');
+            urlInput.type = 'url';
+            urlInput.placeholder = 'URL (https://...)';
+            urlInput.style.cssText = 'padding:8px;border:1px solid #ccc;border-radius:4px;';
+
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:10px;margin-top:5px;';
+
+            const addBtn = document.createElement('button');
+            addBtn.textContent = 'Hinzufügen';
+            addBtn.style.cssText = 'flex:1;background:#0052cc;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;';
+            addBtn.onclick = function() {
+                const name = nameInput.value.trim();
+                const url = urlInput.value.trim();
+                if (!name || !url) { alert('Bitte Name und URL eingeben!'); return; }
+                const column = board.columns.find(c => c.id === colId);
+                const task = column ? column.tasks.find(t => t.id === taskId) : null;
+                if (!task) { alert('Task nicht gefunden'); modal.remove(); return; }
+                if (!task.files) task.files = [];
+                task.files.push({ name, url });
+                save();
+                render();
+                modal.remove();
+            };
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Abbrechen';
+            cancelBtn.style.cssText = 'flex:1;background:#de350b;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;';
+            cancelBtn.onclick = function() { modal.remove(); };
+
+            const title = document.createElement('h3');
+            title.textContent = 'Link hinzufügen';
+            title.style.margin = '0 0 5px 0';
+
+            btnRow.append(addBtn, cancelBtn);
+            modal.append(title, nameInput, urlInput, btnRow);
+            document.body.appendChild(modal);
+            nameInput.focus();
+        }
+
+        // ═══════════════════════════════════════════════
+        // UTILITIES
+        // ═══════════════════════════════════════════════
+        function uid() {
+            return Math.random().toString(36).slice(2, 10);
+        }
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function escAttr(s) {
+            return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode') ? 'enabled' : 'disabled');
+        }
+
+        function initDarkMode() {
+            if (localStorage.getItem('darkMode') === 'enabled') {
+                document.body.classList.add('dark-mode');
+            }
+        }
+
+        initDarkMode();
+
+        // ═══════════════════════════════════════════════
+        // DRAG & DROP via Pointer Events
+        // ═══════════════════════════════════════════════
+        let dnd = {
+            active: false, card: null, ghost: null, indicator: null,
+            taskId: null, originColId: null, originIdx: null,
+            startX: 0, startY: 0, offsetX: 0, offsetY: 0
+        };
+
+        // Column drag state
+        let colDnd = {
+            active: false, column: null, ghost: null, indicator: null,
+            originIdx: null, startX: 0, startY: 0, offsetX: 0, offsetY: 0
+        };
+
+        function initDragDrop() {
+            document.addEventListener('pointerdown', onPointerDown);
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+        }
+
+        function onPointerDown(e) {
+            const tag = e.target.tagName;
+            if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'A') return;
+            if (e.target.isContentEditable) return;
+
+            // Column drag: initiated from drag handle
+            if (e.target.closest('.column-drag-handle')) {
+                const column = e.target.closest('.column');
+                if (!column) return;
+                const colId = column.dataset.id;
+                colDnd.startX = e.clientX;
+                colDnd.startY = e.clientY;
+                colDnd.column = column;
+                colDnd.originIdx = board.columns.findIndex(c => String(c.id) === String(colId));
+                const rect = column.getBoundingClientRect();
+                colDnd.offsetX = e.clientX - rect.left;
+                colDnd.offsetY = e.clientY - rect.top;
+                return;
+            }
+
+            // Card drag
+            const card = e.target.closest('.card');
+            if (!card) return;
+
+            dnd.startX = e.clientX;
+            dnd.startY = e.clientY;
+            dnd.card = card;
+            dnd.taskId = parseInt(card.dataset.taskId);
+            dnd.originColId = parseInt(card.closest('.column').dataset.id);
+            const col = board.columns.find(c => c.id === dnd.originColId);
+            if (col) dnd.originIdx = col.tasks.findIndex(t => t.id === dnd.taskId);
+
+            const rect = card.getBoundingClientRect();
+            dnd.offsetX = e.clientX - rect.left;
+            dnd.offsetY = e.clientY - rect.top;
+        }
+
+        function onPointerMove(e) {
+            // Column drag
+            if (colDnd.column) {
+                if (!colDnd.active) {
+                    const dx = e.clientX - colDnd.startX;
+                    if (Math.abs(dx) < 8) return;
+                    colDnd.active = true;
+                    colDnd.column.classList.add('col-dragging');
+                    colDnd.ghost = colDnd.column.cloneNode(true);
+                    colDnd.ghost.className = 'column column-ghost';
+                    colDnd.ghost.style.width = colDnd.column.offsetWidth + 'px';
+                    colDnd.ghost.style.height = colDnd.column.offsetHeight + 'px';
+                    document.body.appendChild(colDnd.ghost);
+                    colDnd.indicator = document.createElement('div');
+                    colDnd.indicator.className = 'col-drop-indicator';
+                }
+                colDnd.ghost.style.left = (e.clientX - colDnd.offsetX) + 'px';
+                colDnd.ghost.style.top = (e.clientY - colDnd.offsetY) + 'px';
+
+                // Find target column position
+                colDnd.ghost.style.display = 'none';
+                const el = document.elementFromPoint(e.clientX, e.clientY);
+                colDnd.ghost.style.display = '';
+                if (colDnd.indicator.parentNode) colDnd.indicator.remove();
+
+                if (el) {
+                    const targetCol = el.closest('.column');
+                    if (targetCol && targetCol !== colDnd.column) {
+                        const rect = targetCol.getBoundingClientRect();
+                        const boardEl = document.getElementById('board');
+                        if (e.clientX < rect.left + rect.width / 2) {
+                            boardEl.insertBefore(colDnd.indicator, targetCol);
+                        } else {
+                            targetCol.after(colDnd.indicator);
+                        }
+                    }
+                }
+                return;
+            }
+
+            if (!dnd.card) return;
+            if (!dnd.active) {
+                const dx = e.clientX - dnd.startX;
+                const dy = e.clientY - dnd.startY;
+                if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+
+                dnd.active = true;
+                dnd.card.classList.add('dragging');
+                dnd.card.setPointerCapture(e.pointerId);
+
+                dnd.ghost = document.createElement('div');
+                dnd.ghost.className = 'card-ghost';
+                dnd.ghost.innerHTML = dnd.card.querySelector('.card-title').textContent;
+                dnd.ghost.style.width = dnd.card.offsetWidth + 'px';
+                document.body.appendChild(dnd.ghost);
+
+                dnd.indicator = document.createElement('div');
+                dnd.indicator.className = 'drop-indicator';
+            }
+
+            dnd.ghost.style.left = (e.clientX - dnd.offsetX) + 'px';
+            dnd.ghost.style.top = (e.clientY - dnd.offsetY) + 'px';
+
+            dnd.ghost.style.display = 'none';
+            const elBelow = document.elementFromPoint(e.clientX, e.clientY);
+            dnd.ghost.style.display = '';
+
+            if (dnd.indicator.parentNode) dnd.indicator.remove();
+            document.querySelectorAll('.cards.drop-target').forEach(c => c.classList.remove('drop-target'));
+
+            if (!elBelow) return;
+            const targetCardsContainer = elBelow.closest('.cards');
+            if (!targetCardsContainer) return;
+            targetCardsContainer.classList.add('drop-target');
+
+            const targetCard = elBelow.closest('.card');
+            if (targetCard && targetCard !== dnd.card) {
+                const rect = targetCard.getBoundingClientRect();
+                if (e.clientY < rect.top + rect.height / 2) {
+                    targetCard.before(dnd.indicator);
+                } else {
+                    targetCard.after(dnd.indicator);
+                }
+            } else if (!targetCard) {
+                targetCardsContainer.appendChild(dnd.indicator);
+            }
+        }
+
+        function onPointerUp(e) {
+            // Column drop
+            if (colDnd.column) {
+                if (colDnd.active) {
+                    colDnd.column.classList.remove('col-dragging');
+                    if (colDnd.ghost) colDnd.ghost.style.display = 'none';
+                    const el = document.elementFromPoint(e.clientX, e.clientY);
+                    if (colDnd.ghost) colDnd.ghost.remove();
+                    if (colDnd.indicator) colDnd.indicator.remove();
+
+                    if (el) {
+                        const targetCol = el.closest('.column');
+                        if (targetCol && targetCol !== colDnd.column) {
+                            const targetId = targetCol.dataset.id;
+                            let targetIdx = board.columns.findIndex(c => String(c.id) === String(targetId));
+                            const rect = targetCol.getBoundingClientRect();
+                            if (e.clientX >= rect.left + rect.width / 2) targetIdx += 1;
+                            // Move column in data
+                            const [moved] = board.columns.splice(colDnd.originIdx, 1);
+                            // Adjust target if it shifted
+                            if (colDnd.originIdx < targetIdx) targetIdx -= 1;
+                            board.columns.splice(targetIdx, 0, moved);
+                            save();
+                            render();
+                        }
+                    }
+                }
+                colDnd = { active: false, column: null, ghost: null, indicator: null,
+                           originIdx: null, startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
+                return;
+            }
+
+            if (!dnd.card) return;
+
+            if (dnd.active) {
+                dnd.card.classList.remove('dragging');
+                dnd.card.releasePointerCapture(e.pointerId);
+
+                if (dnd.ghost) dnd.ghost.style.display = 'none';
+                const elBelow = document.elementFromPoint(e.clientX, e.clientY);
+                if (dnd.ghost) dnd.ghost.remove();
+                if (dnd.indicator) dnd.indicator.remove();
+
+                document.querySelectorAll('.cards.drop-target').forEach(c => c.classList.remove('drop-target'));
+
+                if (elBelow) {
+                    const targetCardsContainer = elBelow.closest('.cards');
+                    if (targetCardsContainer) {
+                        const targetColId = parseInt(targetCardsContainer.dataset.columnId);
+                        const originCol = board.columns.find(c => c.id === dnd.originColId);
+                        const destCol = board.columns.find(c => c.id === targetColId);
+
+                        if (originCol && destCol) {
+                            const movedTask = originCol.tasks.splice(dnd.originIdx, 1)[0];
+                            const targetCard = elBelow.closest('.card');
+                            if (targetCard && targetCard !== dnd.card) {
+                                const targetTaskId = parseInt(targetCard.dataset.taskId);
+                                let insertIdx = destCol.tasks.findIndex(t => t.id === targetTaskId);
+                                const rect = targetCard.getBoundingClientRect();
+                                if (e.clientY >= rect.top + rect.height / 2) insertIdx += 1;
+                                destCol.tasks.splice(insertIdx, 0, movedTask);
+                            } else {
+                                destCol.tasks.push(movedTask);
+                            }
+                            save();
+                            render();
+                        }
+                    }
+                }
+            }
+
+            dnd = { active: false, card: null, ghost: null, indicator: null,
+                    taskId: null, originColId: null, originIdx: null,
+                    startX: 0, startY: 0, offsetX: 0, offsetY: 0 };
+        }
+
+        // ═══════════════════════════════════════════════
+        // INIT
+        // ═══════════════════════════════════════════════
+        loadBoard().then(() => { render(); initDragDrop(); });
+    </script>
+</body>
+</html>
