@@ -794,23 +794,36 @@
 
         function showAgentDropdown(event, colId, taskId) {
             event.stopPropagation();
+            event.preventDefault();
             // Remove any existing dropdown
             document.querySelectorAll('.agent-dropdown').forEach(d => d.remove());
 
             const btn = event.target;
+            const rect = btn.getBoundingClientRect();
             const dropdown = document.createElement('div');
             dropdown.className = 'agent-dropdown';
-            dropdown.innerHTML = `
-                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', null)">Auto (Keyword-Routing)</button>
-                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', 'claude')">Claude Code</button>
-                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', 'gemini')">Gemini CLI</button>
-                <button class="agent-dropdown-item" onclick="sendToAgent('${colId}', '${taskId}', 'openclaw')">OpenClaw</button>
-            `;
-            btn.parentElement.appendChild(dropdown);
+            dropdown.style.position = 'fixed';
+            dropdown.style.left = rect.left + 'px';
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+            dropdown.style.zIndex = '9999';
+            dropdown.innerHTML = [
+                ['Auto (Keyword-Routing)', 'null'],
+                ['Claude Code', "'claude'"],
+                ['Gemini CLI', "'gemini'"],
+                ['OpenClaw', "'openclaw'"]
+            ].map(([label, agent]) =>
+                `<button class="agent-dropdown-item" onmousedown="sendToAgent('${colId}', '${taskId}', ${agent})">${label}</button>`
+            ).join('');
+            document.body.appendChild(dropdown);
 
             // Close on click outside
-            const close = (e) => { if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', close); } };
-            setTimeout(() => document.addEventListener('click', close), 10);
+            const close = (e) => {
+                if (!dropdown.contains(e.target) && e.target !== btn) {
+                    dropdown.remove();
+                    document.removeEventListener('mousedown', close);
+                }
+            };
+            setTimeout(() => document.addEventListener('mousedown', close), 50);
         }
 
         function sendToAgent(colId, taskId, agentChoice) {
