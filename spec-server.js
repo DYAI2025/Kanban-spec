@@ -16,7 +16,7 @@ const http = require("http");
 const fs = require("fs");
 
 const PORT = 3002;
-const KANBAN_API = process.env.KANBAN_API_URL || "https://kanban-jet-seven.vercel.app";
+const KANBAN_API = process.env.KANBAN_API_URL || "https://your-kanban.vercel.app";
 const KANBAN_TOKEN = process.env.KANBAN_API_TOKEN || "";
 const POLL_INTERVAL = 10_000;
 

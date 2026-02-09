@@ -9,8 +9,8 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = 3000;
-const DATA_FILE = '/home/moltbot/kanban/kanban_data.json';
-const BOARD_DIR = '/home/moltbot/kanban';
+const DATA_FILE = path.join(__dirname, 'kanban_data.json');
+const BOARD_DIR = __dirname;
 
 // MIME types
 const MIME_TYPES = {

@@ -786,16 +786,33 @@
             return clean + '\n\n---agent-meta---\n' + JSON.stringify(meta);
         }
 
+        // Map agent IDs to display names
+        function agentDisplayName(agentId) {
+            const names = {
+                'claude': 'Claude Sonnet', 'claude-opus': 'Claude Opus',
+                'gemini': 'Gemini CLI', 'openclaw': 'OpenClaw',
+                'codex': 'Codex', 'qwen': 'Qwen Code', 'kimi': 'Kimi K2.5'
+            };
+            return names[agentId] || agentId || '?';
+        }
+
         function renderAgentBadge(meta) {
             if (!meta || !meta.status) return '';
+            const name = agentDisplayName(meta.agent);
             const labels = {
-                queued: 'In Warteschlange',
-                running: `<span class="agent-spinner"></span> ${esc(meta.agent || '?')} arbeitet...`,
-                review: 'Ergebnis prüfen',
-                failed: `Fehlgeschlagen (${meta.attempts || '?'}/${3})`
+                queued: `${name} — Warteschlange`,
+                running: `<span class="agent-spinner"></span> ${esc(name)} arbeitet...`,
+                review: `${esc(name)} — Ergebnis prüfen`,
+                failed: `${esc(name)} — Fehlgeschlagen (${meta.attempts || '?'}/${3})`
             };
             const cls = `agent-badge agent-badge-${meta.status}`;
-            return `<div class="${cls}">${labels[meta.status] || meta.status}</div>`;
+            let badge = `<div class="${cls}">${labels[meta.status] || meta.status}</div>`;
+
+            // Show result link for review/failed with resultSummary
+            if ((meta.status === 'review' || meta.status === 'failed') && meta.resultSummary) {
+                badge += `<div class="agent-result-link" onclick="showResultModal(${JSON.stringify(escAttr(meta.resultSummary)).replace(/'/g, "\\'")})" title="Ergebnis ansehen">📋 Ergebnis ansehen</div>`;
+            }
+            return badge;
         }
 
         // Agent registry cache (loaded from Task-Runner API)
@@ -814,12 +831,15 @@
             } catch (e) {
                 console.log('Could not load agents from Task-Runner:', e.message);
             }
-            // Fallback: hardcoded basics
+            // Fallback: full registry (Vercel frontend can't reach localhost:3004)
             agentRegistry = [
                 { id: 'claude', name: 'Claude Sonnet', enabled: true },
                 { id: 'claude-opus', name: 'Claude Opus', enabled: true },
-                { id: 'gemini', name: 'Gemini CLI', enabled: true },
-                { id: 'openclaw', name: 'OpenClaw', enabled: true }
+                { id: 'gemini', name: 'Gemini CLI', enabled: true, default: true },
+                { id: 'openclaw', name: 'OpenClaw', enabled: true },
+                { id: 'codex', name: 'Codex', enabled: false, note: 'OpenAI quota exceeded' },
+                { id: 'qwen', name: 'Qwen Code', enabled: false, note: 'DASHSCOPE_API_KEY needs setup' },
+                { id: 'kimi', name: 'Kimi K2.5', enabled: false, note: 'MOONSHOT_API_KEY needs setup' }
             ];
             return agentRegistry;
         }
@@ -865,6 +885,23 @@
                 }
             };
             setTimeout(() => document.addEventListener('mousedown', close), 50);
+        }
+
+        function showResultModal(summaryEncoded) {
+            const summary = summaryEncoded.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML = `
+                <div class="modal" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+                    <h3>Agent Ergebnis</h3>
+                    <pre style="white-space:pre-wrap;word-break:break-word;font-size:13px;background:#f4f5f7;padding:12px;border-radius:4px;max-height:60vh;overflow-y:auto;">${esc(summary)}</pre>
+                    <div class="modal-buttons" style="margin-top:12px;">
+                        <button class="bl-btn bl-btn-secondary" onclick="this.closest('.modal-overlay').remove()">Schließen</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         }
 
         function sendToAgent(colId, taskId, agentChoice) {

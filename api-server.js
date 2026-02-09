@@ -7,7 +7,7 @@
  * The static frontend (index.html) continues to serve via `serve` on port 3000.
  * This API runs on port 3001 and provides CRUD operations for the Coach agent.
  *
- * Data file: /home/moltbot/kanban/board-data.json
+ * Data file: ./board-data.json
  */
 
 const http = require("http");

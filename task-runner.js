@@ -22,7 +22,7 @@ const { spawn } = require("child_process");
 // ── Config ──────────────────────────────────────────────────
 const PORT = 3004;
 const KANBAN_API =
-  process.env.KANBAN_API_URL || "https://kanban-jet-seven.vercel.app";
+  process.env.KANBAN_API_URL || "https://your-kanban.vercel.app";
 const KANBAN_TOKEN = process.env.KANBAN_API_TOKEN || "";
 const POLL_INTERVAL = 15_000;
 const MAX_CONCURRENT = 1;
@@ -31,8 +31,8 @@ const AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_ATTEMPTS = 3;
 const MAX_STDOUT = 10 * 1024 * 1024; // 10MB buffer limit
 
-const WORKSPACES_DIR = "/home/moltbot/kanban/workspaces";
-const RESULTS_DIR = "/home/moltbot/kanban/results";
+const WORKSPACES_DIR = path.join(__dirname, "workspaces");
+const RESULTS_DIR = path.join(__dirname, "results");
 const AGENTS_CONFIG_PATH = path.join(__dirname, "agents.json");
 
 // ── State ───────────────────────────────────────────────────
@@ -198,6 +198,8 @@ ${cleanDesc || "(keine Beschreibung)"}
 ## CONSTRAINTS
 - Erstelle am Ende eine RESULT.md mit einer Zusammenfassung deiner Arbeit
 - Beschreibe was du gemacht hast, welche Dateien du erstellt/geändert hast
+- Wenn du Code committet hast: Nenne den GitHub-Link zum Commit oder PR
+- Wenn du Dokumente erstellt hast: Nenne den Dateipfad
 - Bei Fehlern: Beschreibe was schiefging und mögliche Lösungen
 ${relatedSection}`;
 }
@@ -484,6 +486,7 @@ async function processTask(task, boardData) {
     meta.status = "review";
     meta.resultPath = resultPath;
     meta.lastError = null;
+    meta.resultSummary = summary.slice(0, 2000);
 
     const updatedDesc = setAgentMeta(task.description || task.desc, meta);
     try {
@@ -506,6 +509,7 @@ async function processTask(task, boardData) {
     meta.status = "failed";
     meta.resultPath = resultPath;
     meta.lastError = errorMsg;
+    meta.resultSummary = (summary || errorMsg).slice(0, 2000);
 
     if (meta.attempts < MAX_ATTEMPTS) {
       // Retry: move back to Queue
@@ -607,7 +611,7 @@ async function poll() {
 
 // ── Export / Backup ──────────────────────────────────────────
 
-const EXPORTS_DIR = "/home/moltbot/kanban/exports";
+const EXPORTS_DIR = path.join(__dirname, "exports");
 
 async function exportBackup() {
   fs.mkdirSync(EXPORTS_DIR, { recursive: true });
