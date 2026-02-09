@@ -247,6 +247,27 @@
         body.dark-mode .spec-toggle { color: #e0e0e0; }
         body.dark-mode .spec-toggle:hover { color: #64b5f6; }
 
+        .doc-file-list { margin: 6px 0 12px; }
+        .doc-file-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #e4e8ef;
+            padding: 4px 10px;
+            border-radius: 12px;
+            margin: 3px 4px 3px 0;
+            font-size: 12px;
+        }
+        .doc-file-chip .doc-remove {
+            cursor: pointer;
+            opacity: 0.5;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .doc-file-chip .doc-remove:hover { opacity: 1; }
+        .doc-file-icon { font-size: 14px; }
+        body.dark-mode .doc-file-chip { background: #404040; }
+
         .bl-delete-btn {
             position: absolute;
             top: 8px;
@@ -725,7 +746,10 @@
                     ${p.githubLink ? `<a href="${escAttr(p.githubLink)}" target="_blank" class="bl-link">GitHub →</a>` : ''}
                     ${p.documents && p.documents.length > 0 ? `
                         <div class="bl-docs">
-                            ${p.documents.map(d => `<span class="bl-doc"><a href="${escAttr(d.url)}" target="_blank">${esc(d.name)}</a></span>`).join('')}
+                            ${p.documents.map(d => d.url
+                                ? `<span class="bl-doc"><a href="${escAttr(d.url)}" target="_blank">🔗 ${esc(d.name)}</a></span>`
+                                : `<span class="bl-doc">📎 ${esc(d.name)}</span>`
+                            ).join('')}
                         </div>
                     ` : ''}
                     ${specSection}
@@ -944,25 +968,24 @@
         // ═══════════════════════════════════════════════
         // MODAL
         // ═══════════════════════════════════════════════
+        // Pending files for modal
+        let modalPendingDocs = [];
+
         function showModal({ title, fields, hasDocs, existingDocs, onSubmit }) {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
+            modalPendingDocs = existingDocs ? [...existingDocs] : [];
 
             let docsHTML = '';
             if (hasDocs) {
-                const initDocs = existingDocs || [];
                 docsHTML = `
                     <label>Dokumente</label>
-                    <div id="modal-docs">
-                        ${initDocs.map((d, i) => `
-                            <div class="modal-doc-row" data-idx="${i}">
-                                <input type="text" placeholder="Name" value="${escAttr(d.name)}" style="flex:1" class="doc-name">
-                                <input type="url" placeholder="URL" value="${escAttr(d.url)}" style="flex:2" class="doc-url">
-                                <button class="bl-btn bl-btn-danger" onclick="this.parentElement.remove()" style="padding:6px 8px;">✕</button>
-                            </div>
-                        `).join('')}
+                    <div id="modal-doc-list" class="doc-file-list"></div>
+                    <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <button type="button" class="bl-btn bl-btn-secondary" id="modal-add-files">📁 Dateien wählen</button>
+                        <button type="button" class="bl-btn bl-btn-secondary" id="modal-add-url">🔗 URL hinzufügen</button>
                     </div>
-                    <button type="button" class="bl-btn bl-btn-secondary" onclick="addDocRow()" style="margin-bottom:12px;">+ Dokument</button>
+                    <input type="file" id="modal-file-input" multiple accept=".txt,.md,.json,.yaml,.yml,.xml,.csv,.html,.htm,.pdf,.docx,.py,.js,.ts,.jsx,.tsx,.css,.sql,.sh,.toml,.ini,.cfg,.log,.rtf" style="display:none">
                 `;
             }
 
@@ -986,6 +1009,36 @@
 
             document.body.appendChild(overlay);
             overlay.querySelector('#modal-cancel').onclick = () => overlay.remove();
+
+            if (hasDocs) {
+                renderModalDocs();
+                overlay.querySelector('#modal-add-files').onclick = () => {
+                    overlay.querySelector('#modal-file-input').click();
+                };
+                overlay.querySelector('#modal-file-input').onchange = async (e) => {
+                    const files = Array.from(e.target.files);
+                    for (const file of files.slice(0, 10)) {
+                        if (modalPendingDocs.length >= 10) break;
+                        try {
+                            const content = await readFileContent(file);
+                            modalPendingDocs.push({ name: file.name, content, size: file.size });
+                        } catch (err) {
+                            modalPendingDocs.push({ name: file.name, content: '(Konnte nicht gelesen werden)', size: file.size });
+                        }
+                    }
+                    e.target.value = '';
+                    renderModalDocs();
+                };
+                overlay.querySelector('#modal-add-url').onclick = () => {
+                    const url = prompt('Dokument-URL eingeben:');
+                    if (url && url.trim()) {
+                        const name = url.split('/').pop() || 'Dokument';
+                        modalPendingDocs.push({ name, url: url.trim() });
+                        renderModalDocs();
+                    }
+                };
+            }
+
             overlay.querySelector('#modal-submit').onclick = () => {
                 const data = {};
                 for (const f of fields) {
@@ -996,34 +1049,72 @@
                     return;
                 }
                 if (hasDocs) {
-                    data.documents = [];
-                    overlay.querySelectorAll('.modal-doc-row').forEach(row => {
-                        const name = row.querySelector('.doc-name').value.trim();
-                        const url = row.querySelector('.doc-url').value.trim();
-                        if (name && url) data.documents.push({ name, url });
-                    });
+                    data.documents = modalPendingDocs;
                 }
                 onSubmit(data);
                 overlay.remove();
             };
-            // Focus first field
-            const firstInput = overlay.querySelector('input, textarea');
+            const firstInput = overlay.querySelector('input[type="text"], textarea');
             if (firstInput) firstInput.focus();
         }
 
-        // Called from modal
-        window.addDocRow = function() {
-            const container = document.getElementById('modal-docs');
+        function renderModalDocs() {
+            const container = document.getElementById('modal-doc-list');
             if (!container) return;
-            const row = document.createElement('div');
-            row.className = 'modal-doc-row';
-            row.innerHTML = `
-                <input type="text" placeholder="Name" style="flex:1" class="doc-name">
-                <input type="url" placeholder="URL" style="flex:2" class="doc-url">
-                <button class="bl-btn bl-btn-danger" onclick="this.parentElement.remove()" style="padding:6px 8px;">✕</button>
-            `;
-            container.appendChild(row);
+            if (modalPendingDocs.length === 0) {
+                container.innerHTML = '<span style="color:#999;font-size:12px;">Keine Dokumente angehängt</span>';
+                return;
+            }
+            container.innerHTML = modalPendingDocs.map((d, i) => {
+                const icon = d.url ? '🔗' : fileIcon(d.name);
+                const info = d.url ? d.url.slice(0, 40) : formatSize(d.size);
+                return `<span class="doc-file-chip">
+                    <span class="doc-file-icon">${icon}</span>
+                    ${esc(d.name)}
+                    <span style="color:#999;font-size:10px;">(${info})</span>
+                    <span class="doc-remove" onclick="removeModalDoc(${i})">✕</span>
+                </span>`;
+            }).join('');
+        }
+
+        window.removeModalDoc = function(idx) {
+            modalPendingDocs.splice(idx, 1);
+            renderModalDocs();
         };
+
+        function fileIcon(name) {
+            const ext = name.split('.').pop().toLowerCase();
+            const icons = { pdf: '📄', md: '📝', txt: '📃', json: '📋', yaml: '⚙️', yml: '⚙️',
+                           py: '🐍', js: '📜', ts: '📜', html: '🌐', css: '🎨', csv: '📊', xml: '📦' };
+            return icons[ext] || '📎';
+        }
+
+        function formatSize(bytes) {
+            if (!bytes) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function readFileContent(file) {
+            return new Promise((resolve, reject) => {
+                const maxSize = 50000; // 50KB text limit
+                if (file.size > 2 * 1024 * 1024) {
+                    resolve(`(Datei zu groß: ${formatSize(file.size)} — max 2MB)`);
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    let text = reader.result;
+                    if (text.length > maxSize) {
+                        text = text.slice(0, maxSize) + '\n…(gekürzt, ' + formatSize(file.size) + ' gesamt)';
+                    }
+                    resolve(text);
+                };
+                reader.onerror = () => reject(reader.error);
+                reader.readAsText(file);
+            });
+        }
 
         // ═══════════════════════════════════════════════
         // BOARD ACTIONS

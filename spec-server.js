@@ -143,6 +143,16 @@ async function fetchDocuments(documents) {
   const parts = [];
 
   for (const doc of documents.slice(0, 5)) {
+    // If content is stored directly (file upload), use it
+    if (doc.content) {
+      let text = doc.content;
+      if (text.length > 3000) text = text.slice(0, 3000) + "\n…(gekürzt)";
+      parts.push(`### ${doc.name}\n${text}`);
+      continue;
+    }
+
+    // Otherwise fetch from URL
+    if (!doc.url) continue;
     try {
       const resp = await fetch(doc.url, {
         signal: AbortSignal.timeout(15_000),
