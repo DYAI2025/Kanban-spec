@@ -267,7 +267,8 @@ async function callGemini(prompt) {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 65536,
+        thinkingConfig: { thinkingBudget: 4096 },
       },
     }),
     signal: AbortSignal.timeout(120_000),
