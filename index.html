@@ -1057,20 +1057,26 @@
                     { id: 'githubLink', label: 'GitHub-Link', type: 'input', placeholder: 'https://github.com/...' },
                 ],
                 hasDocs: true,
-                onSubmit: (data) => {
-                    board.backlog.push({
-                        id: 'proj-' + uid(),
-                        title: data.title,
-                        description: data.description || '',
-                        githubLink: data.githubLink || '',
-                        documents: data.documents || [],
-                        specStatus: 'none',
-                        spec: '',
-                        specTasks: [],
-                        createdAt: new Date().toISOString()
-                    });
-                    save();
-                    render();
+                onSubmit: async (data) => {
+                    try {
+                        const resp = await fetch('/api/backlog', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                title: data.title,
+                                description: data.description || '',
+                                githubLink: data.githubLink || '',
+                                documents: data.documents || [],
+                            })
+                        });
+                        if (!resp.ok) throw new Error('API Fehler: ' + resp.status);
+                        const project = await resp.json();
+                        board.backlog.push(project);
+                        render();
+                    } catch (err) {
+                        console.error('Projekt anlegen fehlgeschlagen:', err);
+                        alert('Projekt konnte nicht gespeichert werden: ' + err.message);
+                    }
                 }
             });
         }

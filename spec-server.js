@@ -16,7 +16,7 @@ const http = require("http");
 const fs = require("fs");
 
 const PORT = 3002;
-const KANBAN_API = process.env.KANBAN_API_URL || "https://your-kanban.vercel.app";
+const KANBAN_API = process.env.KANBAN_API_URL || "https://kanban-jet-seven.vercel.app";
 const KANBAN_TOKEN = process.env.KANBAN_API_TOKEN || "";
 const POLL_INTERVAL = 10_000;
 
@@ -24,8 +24,9 @@ const POLL_INTERVAL = 10_000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
 
-// Track which projects are currently being processed
-const processing = new Set();
+// Track which projects are currently being processed (id → start timestamp)
+const processing = new Map();
+const MAX_PROCESSING_MS = 5 * 60 * 1000; // 5 minutes max per spec
 
 // Track which provider was used last (for health endpoint)
 let lastProvider = null;
@@ -33,24 +34,39 @@ let lastTokens = null;
 
 // ── Kanban API helpers ──────────────────────────────────────────
 
-async function kanbanGet(path) {
-  const headers = { "Content-Type": "application/json" };
+async function kanbanFetch(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...options.headers };
   if (KANBAN_TOKEN) headers["Authorization"] = `Bearer ${KANBAN_TOKEN}`;
-  const resp = await fetch(`${KANBAN_API}${path}`, { headers });
+  const resp = await fetch(`${KANBAN_API}${path}`, {
+    ...options,
+    headers,
+    signal: AbortSignal.timeout(30_000),
+  });
+  // On 401, retry without auth header (token mismatch with Vercel env)
+  if (resp.status === 401 && KANBAN_TOKEN) {
+    console.log(`  → 401 with token, retrying without auth header`);
+    const noAuthHeaders = { "Content-Type": "application/json" };
+    const resp2 = await fetch(`${KANBAN_API}${path}`, {
+      ...options,
+      headers: noAuthHeaders,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp2.ok) throw new Error(`Kanban API ${path}: ${resp2.status} (no-auth retry)`);
+    return resp2.json();
+  }
   if (!resp.ok) throw new Error(`Kanban API ${path}: ${resp.status}`);
   return resp.json();
 }
 
+async function kanbanGet(path) {
+  return kanbanFetch(path);
+}
+
 async function kanbanPut(path, data) {
-  const headers = { "Content-Type": "application/json" };
-  if (KANBAN_TOKEN) headers["Authorization"] = `Bearer ${KANBAN_TOKEN}`;
-  const resp = await fetch(`${KANBAN_API}${path}`, {
+  return kanbanFetch(path, {
     method: "PUT",
-    headers,
     body: JSON.stringify(data),
   });
-  if (!resp.ok) throw new Error(`Kanban API PUT ${path}: ${resp.status}`);
-  return resp.json();
 }
 
 // ── GitHub & Document Fetching ──────────────────────────────────
@@ -225,8 +241,16 @@ Erstelle basierend auf den obigen Informationen:
 1. Eine detaillierte Spezifikation als Markdown mit: Projektübersicht, Ziele, Features, Architektur, Tech-Stack, Risiken
 2. Konkrete Aufgaben für die Umsetzung (5-15 Tasks, priorisiert)
 
-Antworte NUR mit folgendem JSON (kein Markdown-Codeblock, nur reines JSON):
-{"spec": "Markdown-Spec hier...", "tasks": [{"title": "Aufgabe", "details": "Beschreibung"}]}`;
+WICHTIG: Antworte mit einem JSON-Objekt mit ZWEI separaten Keys:
+- "spec": Ein Markdown-String mit der Spezifikation (OHNE die Tasks)
+- "tasks": Ein Array von Objekten mit "title" und "details"
+
+Die Tasks MÜSSEN im "tasks"-Array stehen, NICHT im "spec"-String.
+
+Beispiel-Format:
+{"spec": "# Projekt\\n\\n## Übersicht\\n...", "tasks": [{"title": "MVP implementieren", "details": "Beschreibung der Aufgabe"}]}
+
+Kein Markdown-Codeblock drumherum, nur reines JSON.`;
 }
 
 // ── LLM Providers ───────────────────────────────────────────────
@@ -332,13 +356,26 @@ function extractJSON(text) {
   // Try direct parse
   try {
     const parsed = JSON.parse(cleaned);
-    if (parsed.spec !== undefined && parsed.tasks !== undefined) return parsed;
+    if (parsed.spec !== undefined) {
+      // If tasks is missing, default to empty array
+      if (!parsed.tasks) {
+        console.log(`  → JSON parsed but no "tasks" key, defaulting to empty array`);
+        parsed.tasks = [];
+      }
+      return parsed;
+    }
   } catch (e) { /* fall through */ }
 
-  // Try extracting JSON object from text
-  const match = cleaned.match(/\{[\s\S]*"spec"[\s\S]*"tasks"[\s\S]*\}/);
+  // Try extracting JSON object from text (with or without tasks key)
+  const match = cleaned.match(/\{[\s\S]*"spec"[\s\S]*\}/);
   if (match) {
-    try { return JSON.parse(match[0]); } catch (e) { /* fall through */ }
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed.spec !== undefined) {
+        if (!parsed.tasks) parsed.tasks = [];
+        return parsed;
+      }
+    } catch (e) { /* fall through */ }
   }
 
   // Fallback: extract spec and tasks separately via regex
@@ -375,7 +412,7 @@ function extractJSON(text) {
 async function generateSpec(project) {
   const projectId = project.id;
   if (processing.has(projectId)) return;
-  processing.add(projectId);
+  processing.set(projectId, Date.now());
 
   const ts = () => new Date().toISOString();
   console.log(`[${ts()}] Starting spec generation for: ${project.title} (${projectId})`);
@@ -407,7 +444,10 @@ async function generateSpec(project) {
     console.log(`[${ts()}] Spec ready for ${project.title}: ${tasks.length} tasks [${provider}]`);
   } catch (err) {
     console.error(`[${ts()}] Spec generation failed for ${project.title}:`, err.message);
-    await kanbanPut(`/api/backlog/${projectId}`, { specStatus: "none" }).catch(() => {});
+    await kanbanPut(`/api/backlog/${projectId}`, {
+      specStatus: "error",
+      spec: `Fehler bei Spec-Generierung: ${err.message}`,
+    }).catch(() => {});
   } finally {
     processing.delete(projectId);
   }
@@ -416,6 +456,15 @@ async function generateSpec(project) {
 // ── Polling ─────────────────────────────────────────────────────
 
 async function pollBacklog() {
+  // Clean up stuck projects (exceeded MAX_PROCESSING_MS)
+  const now = Date.now();
+  for (const [id, startTime] of processing) {
+    if (now - startTime > MAX_PROCESSING_MS) {
+      console.log(`[${new Date().toISOString()}] Clearing stuck project ${id} (running ${Math.round((now - startTime) / 1000)}s)`);
+      processing.delete(id);
+    }
+  }
+
   try {
     const backlog = await kanbanGet("/api/backlog");
     const pending = backlog.filter(
@@ -425,7 +474,7 @@ async function pollBacklog() {
       generateSpec(project); // fire and forget
     }
   } catch (err) {
-    // Silent — will retry on next poll
+    console.error(`[${new Date().toISOString()}] Poll error: ${err.message}`);
   }
 }
 
@@ -442,7 +491,7 @@ const server = http.createServer((req, res) => {
     },
     lastProvider,
     lastTokens,
-    processing: [...processing],
+    processing: [...processing.keys()],
   }));
 });
 
