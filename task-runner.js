@@ -22,7 +22,7 @@ const { spawn } = require("child_process");
 // ── Config ──────────────────────────────────────────────────
 const PORT = 3004;
 const KANBAN_API =
-  process.env.KANBAN_API_URL || "https://your-kanban.vercel.app";
+  process.env.KANBAN_API_URL || "https://kanban-jet-seven-ashy.vercel.app";
 const KANBAN_TOKEN = process.env.KANBAN_API_TOKEN || "";
 const POLL_INTERVAL = 15_000;
 const MAX_CONCURRENT = 1;
@@ -50,6 +50,14 @@ async function kanbanGet(urlPath) {
   const headers = { "Content-Type": "application/json" };
   if (KANBAN_TOKEN) headers["Authorization"] = `Bearer ${KANBAN_TOKEN}`;
   const resp = await fetch(`${KANBAN_API}${urlPath}`, { headers });
+  if (resp.status === 401 && KANBAN_TOKEN) {
+    console.log(`  → 401 with token, retrying without auth header`);
+    const resp2 = await fetch(`${KANBAN_API}${urlPath}`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!resp2.ok) throw new Error(`Kanban GET ${urlPath}: ${resp2.status}`);
+    return resp2.json();
+  }
   if (!resp.ok) throw new Error(`Kanban GET ${urlPath}: ${resp.status}`);
   return resp.json();
 }
@@ -57,11 +65,22 @@ async function kanbanGet(urlPath) {
 async function kanbanPut(urlPath, data) {
   const headers = { "Content-Type": "application/json" };
   if (KANBAN_TOKEN) headers["Authorization"] = `Bearer ${KANBAN_TOKEN}`;
+  const body = JSON.stringify(data);
   const resp = await fetch(`${KANBAN_API}${urlPath}`, {
     method: "PUT",
     headers,
-    body: JSON.stringify(data),
+    body,
   });
+  if (resp.status === 401 && KANBAN_TOKEN) {
+    console.log(`  → 401 with token, retrying without auth header`);
+    const resp2 = await fetch(`${KANBAN_API}${urlPath}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    if (!resp2.ok) throw new Error(`Kanban PUT ${urlPath}: ${resp2.status}`);
+    return resp2.json();
+  }
   if (!resp.ok) throw new Error(`Kanban PUT ${urlPath}: ${resp.status}`);
   return resp.json();
 }
@@ -69,11 +88,22 @@ async function kanbanPut(urlPath, data) {
 async function kanbanPost(urlPath, data) {
   const headers = { "Content-Type": "application/json" };
   if (KANBAN_TOKEN) headers["Authorization"] = `Bearer ${KANBAN_TOKEN}`;
+  const body = JSON.stringify(data);
   const resp = await fetch(`${KANBAN_API}${urlPath}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(data),
+    body,
   });
+  if (resp.status === 401 && KANBAN_TOKEN) {
+    console.log(`  → 401 with token, retrying without auth header`);
+    const resp2 = await fetch(`${KANBAN_API}${urlPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    if (!resp2.ok) throw new Error(`Kanban POST ${urlPath}: ${resp2.status}`);
+    return resp2.json();
+  }
   if (!resp.ok) throw new Error(`Kanban POST ${urlPath}: ${resp.status}`);
   return resp.json();
 }
@@ -84,6 +114,22 @@ async function moveTask(taskId, targetColId) {
 
 async function updateTask(taskId, data) {
   return kanbanPut(`/api/tasks/${taskId}`, data);
+}
+
+async function postComment(taskId, author, text) {
+  return kanbanPut(`/api/tasks/${taskId}`, { comment: { author, text } });
+}
+
+function extractGitHubLinks(text) {
+  if (!text) return [];
+  const pattern = /https?:\/\/github\.com\/[^\s)>\]"']+/g;
+  return [...new Set(text.match(pattern) || [])];
+}
+
+async function findProjectForTask(task, boardData) {
+  if (!task.colorLabel) return null;
+  const backlog = boardData.backlog || [];
+  return backlog.find(p => task.colorLabel === p.title || task.colorLabel === `${p.title} (QA)`) || null;
 }
 
 // ── Agent Meta helpers ──────────────────────────────────────
@@ -182,12 +228,16 @@ function getFreeMB() {
 
 // ── Prompt Builder ──────────────────────────────────────────
 
-function buildPrompt(task, relatedTasks) {
+function buildPrompt(task, relatedTasks, project) {
   const cleanDesc = getCleanDescription(task.description || task.desc);
   const relatedSection =
     relatedTasks.length > 0
       ? `\n## RELATED TASKS (nur zur Info)\n${relatedTasks.map((t) => `- ${t.title}`).join("\n")}`
       : "";
+
+  const githubSection = project && project.githubLink
+    ? `\n## GITHUB REPOSITORY\n${project.githubLink}\n- Clone und arbeite in diesem Repository\n- Committe und pushe deine Änderungen\n- Nenne den Commit-Hash oder PR-Link in RESULT.md`
+    : "";
 
   return `## TASK
 ${task.title}
@@ -201,7 +251,7 @@ ${cleanDesc || "(keine Beschreibung)"}
 - Wenn du Code committet hast: Nenne den GitHub-Link zum Commit oder PR
 - Wenn du Dokumente erstellt hast: Nenne den Dateipfad
 - Bei Fehlern: Beschreibe was schiefging und mögliche Lösungen
-${relatedSection}`;
+${githubSection}${relatedSection}`;
 }
 
 // ── Agent Spawner ───────────────────────────────────────────
@@ -467,8 +517,11 @@ async function processTask(task, boardData) {
     .filter((t) => t.id !== taskId && t.color === task.color && task.color)
     .slice(0, 5);
 
+  // Look up project for GitHub context
+  const project = await findProjectForTask(task, boardData);
+
   // Build prompt and spawn
-  const prompt = buildPrompt(task, relatedTasks);
+  const prompt = buildPrompt(task, relatedTasks, project);
   const result = await spawnAgent(agent, prompt, workDir, taskId);
 
   activeAgents.delete(taskId);
@@ -491,6 +544,23 @@ async function processTask(task, boardData) {
     const updatedDesc = setAgentMeta(task.description || task.desc, meta);
     try {
       await updateTask(taskId, { description: updatedDesc });
+    } catch (e) {
+      console.log(`  Warning: could not update task: ${e.message}`);
+    }
+
+    // Post completion comment
+    try {
+      const durationStr = `${Math.round(result.durationMs / 1000)}s`;
+      const githubLinks = extractGitHubLinks(summary);
+      const linksStr = githubLinks.length > 0 ? `\n\nGitHub: ${githubLinks.join(', ')}` : '';
+      const commentSummary = summary.length > 1500 ? summary.slice(0, 1500) + '...' : summary;
+      const commentText = `Agent ${agent} abgeschlossen (${durationStr})\n\n${commentSummary}${linksStr}`;
+      await postComment(taskId, agent, commentText);
+    } catch (e) {
+      console.log(`  Warning: could not post comment: ${e.message}`);
+    }
+
+    try {
       await moveTask(taskId, colIds.review);
     } catch (e) {
       console.log(`  Warning: could not move to Review: ${e.message}`);
@@ -510,6 +580,14 @@ async function processTask(task, boardData) {
     meta.resultPath = resultPath;
     meta.lastError = errorMsg;
     meta.resultSummary = (summary || errorMsg).slice(0, 2000);
+
+    // Post failure comment
+    try {
+      const commentText = `Agent ${agent} fehlgeschlagen (Versuch ${meta.attempts}/${MAX_ATTEMPTS})\n\nFehler: ${errorMsg}`;
+      await postComment(taskId, agent, commentText);
+    } catch (e) {
+      console.log(`  Warning: could not post failure comment: ${e.message}`);
+    }
 
     if (meta.attempts < MAX_ATTEMPTS) {
       // Retry: move back to Queue
@@ -546,6 +624,18 @@ async function processTask(task, boardData) {
 
 async function poll() {
   try {
+    // ── Stale process reaper: detect dead agent PIDs ──
+    for (const [taskId, info] of activeAgents) {
+      if (!info.pid) continue;
+      let alive = true;
+      try { process.kill(info.pid, 0); } catch (_) { alive = false; }
+      if (alive) continue;
+      const runtime = Math.round((Date.now() - info.startedAt) / 1000);
+      console.log(`[${ts()}] Reaper: agent ${info.agent} task ${taskId} PID ${info.pid} dead after ${runtime}s`);
+      activeAgents.delete(taskId);
+      moveTask(taskId, colIds.queue).catch(() => {});
+    }
+
     // Skip if at capacity
     if (activeAgents.size >= MAX_CONCURRENT) return;
 
@@ -739,6 +829,19 @@ async function start() {
 
   // Start poll loop
   const pollTimer = setInterval(poll, POLL_INTERVAL);
+
+  // Stale process reaper - runs independently of poll
+  setInterval(() => {
+    for (const [taskId, info] of activeAgents) {
+      if (!info.pid) continue;
+      try { process.kill(info.pid, 0); } catch (_) {
+        const runtime = Math.round((Date.now() - info.startedAt) / 1000);
+        console.log(`[${ts()}] Reaper: ${info.agent} task ${taskId} PID ${info.pid} dead after ${runtime}s`);
+        activeAgents.delete(taskId);
+        if (colIds.queue) moveTask(taskId, colIds.queue).catch(() => {});
+      }
+    }
+  }, 30000); // Check every 30s
   poll();
 
   // Graceful shutdown
